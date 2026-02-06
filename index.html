@@ -587,7 +587,19 @@ window.speechFinalText='';
 function escapeHtml(str){if(!str)return'';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 function loadState(){try{const s=localStorage.getItem(APP_KEY);if(s)return{...DEFAULT_STATE,...JSON.parse(s)};}catch(e){}return{...DEFAULT_STATE};}
 function saveState(){try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){showToast('Speicher voll!');}}
-function setState(u){state={...state,...u};saveState();render();}
+function pushNotifStateToIOS(){
+if(!window.webkit?.messageHandlers?.notifications)return;
+const payload={
+notifications:state.notifications,
+profile:{opDate:state.profile?.opDate||null},
+appointments:state.appointments||[],
+medications:state.medications||[],
+fastingAlarms:state.fastingAlarms||null,
+woundAlarms:state.woundAlarms||null
+};
+window.webkit.messageHandlers.notifications.postMessage({cmd:"reschedule",state:payload});
+}
+function setState(u){state={...state,...u};saveState();render();if(state.notifications!==false)pushNotifStateToIOS();}
 function id(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5);}
 function formatDate(d){if(!d)return'';return new Date(d).toLocaleDateString(getLocale(),{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
 function formatShort(d){if(!d)return'';return new Date(d).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'2-digit'});}
