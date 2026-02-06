@@ -588,7 +588,8 @@ function escapeHtml(str){if(!str)return'';return String(str).replace(/&/g,'&amp;
 function loadState(){try{const s=localStorage.getItem(APP_KEY);if(s)return{...DEFAULT_STATE,...JSON.parse(s)};}catch(e){}return{...DEFAULT_STATE};}
 function saveState(){try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){showToast('Speicher voll!');}}
 function pushNotifStateToIOS(){
-if(!window.webkit?.messageHandlers?.notifications)return;
+try{
+if(!window.webkit||!window.webkit.messageHandlers||!window.webkit.messageHandlers.notifications)return;
 const payload={
 notifications:state.notifications,
 profile:{opDate:state.profile?.opDate||null},
@@ -598,8 +599,15 @@ fastingAlarms:state.fastingAlarms||null,
 woundAlarms:state.woundAlarms||null
 };
 window.webkit.messageHandlers.notifications.postMessage({cmd:"reschedule",state:payload});
+}catch(e){console.log("pushNotifStateToIOS error",e);}
 }
-function setState(u){state={...state,...u};saveState();render();if(state.notifications!==false)pushNotifStateToIOS();}
+function setState(u){
+state={...state,...u};
+saveState();
+render();
+// iOS Notifications neu planen (nur wenn nicht deaktiviert)
+if(state.notifications!==false){pushNotifStateToIOS();}
+}
 function id(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5);}
 function formatDate(d){if(!d)return'';return new Date(d).toLocaleDateString(getLocale(),{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
 function formatShort(d){if(!d)return'';return new Date(d).toLocaleDateString(getLocale(),{day:'2-digit',month:'2-digit',year:'2-digit'});}
@@ -926,7 +934,7 @@ function saveEmergencyContact(){const contact=document.getElementById('emergency
 function surgeonModal(){showModal('👨‍⚕️ Operateur',`<div class="form-group"><label class="form-label">Name des Operateurs</label><input type="text" class="form-input" id="surgeonInput" value="${state.profile.surgeon||''}" placeholder="z.B. Dr. Schmidt"></div><button class="btn btn-primary btn-block" onclick="saveSurgeon()">${t('saveBtn')}</button>`);}
 function saveSurgeon(){const surgeon=document.getElementById('surgeonInput')?.value;setState({profile:{...state.profile,surgeon:surgeon}});closeModal();showToast('Operateur gespeichert ✓');}
 function toggleLargeFont(){setState({largeFont:!state.largeFont});document.documentElement.style.fontSize=state.largeFont?'18px':'16px';showToast(state.largeFont?'Große Schrift aktiviert':'Normale Schrift');}
-function toggleNotifications(){const newValue=state.notifications===false;setState({notifications:newValue});showToast(newValue?'Erinnerungen aktiviert':'Erinnerungen deaktiviert');}
+function toggleNotifications(){const newValue=state.notifications===false;setState({notifications:newValue});showToast(newValue?'Erinnerungen aktiviert':'Erinnerungen deaktiviert');if(newValue&&window.webkit?.messageHandlers?.notifications){window.webkit.messageHandlers.notifications.postMessage({cmd:"permission"});}}
 function getProfiles(){const stored=localStorage.getItem('op_profiles');return stored?JSON.parse(stored):[];}
 function saveProfiles(profiles){localStorage.setItem('op_profiles',JSON.stringify(profiles));}
 function renderProfilesList(){const profiles=getProfiles();const currentId=state.profileId||'default';if(profiles.length===0)return'<p style="font-size:.85rem;color:var(--muted);margin-bottom:10px;">Aktuell: Standardprofil</p>';return`<div style="margin-bottom:10px;">${profiles.map(p=>`<div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:8px;${p.id===currentId?'border:2px solid var(--primary);':''}"><span style="flex:1;font-weight:${p.id===currentId?'600':'400'};">${p.name} ${p.id===currentId?'✓':''}</span>${p.id!==currentId?`<button class="btn btn-sm btn-secondary" onclick="switchProfile('${p.id}')">Laden</button>`:''}<button class="btn btn-sm btn-danger" onclick="deleteProfile('${p.id}')" style="padding:6px 10px;">🗑️</button></div>`).join('')}</div>`;}
