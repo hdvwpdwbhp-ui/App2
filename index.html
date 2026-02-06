@@ -561,7 +561,7 @@ function getWarnings(){return [{title:'Starke Blutung',desc:'Blut durchnässt Ve
 function getOpInfo(){return {ablauf:['Sie kommen nüchtern in die Klinik','Aufnahme durch das Pflegeteam','Gespräch mit dem Anästhesisten','Die OP wird durchgeführt','Aufwachraum zur Überwachung','Verlegung oder Entlassung'],vorbereitung:['Nüchtern erscheinen (nach Anweisung)','Medikamente nur nach Absprache','Kein Alkohol 24h vor OP','Nicht rauchen (mind. 24h)','Alle Unterlagen mitbringen','Begleitperson organisieren'],nachsorge:['Wundpflege nach Anweisung','Schmerzmittel wie verordnet','Körperliche Schonung','Kontrolltermine einhalten','Bei Warnzeichen melden','Krankschreibung einreichen'],fragen:[{q:'Wann darf ich duschen?',a:'Nach 24-48h mit wasserfestem Pflaster.'},{q:'Wann darf ich Auto fahren?',a:'Frühestens 24h nach Narkose, ohne Schmerzmittel.'},{q:'Wann kann ich arbeiten?',a:'Abhängig von OP und Beruf – mit Arzt besprechen.'},{q:'Wie lange muss ich nüchtern sein?',a:'Mindestens 6-8 Stunden vor der OP nichts essen, 2 Stunden nichts trinken (klare Flüssigkeiten).'},{q:'Welche Medikamente muss ich vorher absetzen?',a:'Blutverdünner wie Aspirin/Marcumar oft 5-7 Tage vorher – immer mit Arzt absprechen.'},{q:'Was passiert wenn mir nach der Narkose übel ist?',a:'Übelkeit nach Narkose ist häufig. Medikamente dagegen sind verfügbar. Langsam trinken beginnen.'},{q:'Wie lange dauert die Aufwachphase?',a:'30-60 Minuten im Aufwachraum, vollständige Erholung kann mehrere Stunden dauern.'},{q:'Wann werden die Fäden gezogen?',a:'Je nach OP und Nahtmaterial nach 7-14 Tagen, oft beim Hausarzt.'},{q:'Darf ich nach der OP Sport machen?',a:'Leichte Aktivität meist nach 1-2 Wochen, Sport je nach OP erst nach 4-12 Wochen.'},{q:'Was soll ich bei Fieber tun?',a:'Bei Fieber über 38.5°C nach OP sofort Klinik kontaktieren – kann auf Infektion hinweisen.'},{q:'Wie lange werde ich Schmerzen haben?',a:'Akute Schmerzen 3-7 Tage, danach abklingend. Schmerzmittel nach Anweisung nehmen.'},{q:'Kann ich nach der OP normal essen?',a:'Erst klare Flüssigkeiten, dann leichte Kost. Bei Bauch-OPs spezielle Ernährung beachten.'}]};}
 const AI_RESPONSES={greeting:'Hallo! Ich bin Ihr medizinischer Assistent. Ich kann Ihnen allgemeine Informationen zu Ihrer OP-Vorbereitung geben. Wie kann ich helfen?',narkose:'Bei einer Narkose werden Sie in einen schlafähnlichen Zustand versetzt. Der Anästhesist überwacht dabei Ihre Vitalfunktionen. Wichtig: Halten Sie sich an die Nüchternheitsregeln!',schmerzen:'Nach einer OP sind leichte bis mittlere Schmerzen normal. Nehmen Sie die verordneten Schmerzmittel regelmäßig ein. Bei starken, zunehmenden Schmerzen kontaktieren Sie Ihre Klinik.',wunde:'Halten Sie die Wunde sauber und trocken. Verbandswechsel nur nach Anweisung. Bei Rötung, Schwellung oder Eiter sofort zum Arzt!',essen:'Vor der OP: 6-8 Stunden nichts essen, 2 Stunden nichts trinken. Nach der OP: Beginnen Sie mit leichter Kost, wenn Sie sich bereit fühlen.',medikamente:'Besprechen Sie alle Medikamente mit Ihrem Anästhesisten. Blutverdünner müssen oft pausiert werden. Nehmen Sie Dauermedikation nur nach Absprache.',angst:'Angst vor einer OP ist völlig normal. Sprechen Sie mit Ihrem Behandlungsteam darüber. Entspannungstechniken und gute Vorbereitung können helfen.',default:'Das ist eine gute Frage! Für spezifische medizinische Beratung wenden Sie sich bitte an Ihr Behandlungsteam. Ich kann Ihnen allgemeine Informationen zur OP-Vorbereitung geben.'};
 let state=loadState();
-let mediaRecorder=null,audioChunks=[],recordingTimer=null,recordingSeconds=0,recognition=null;
+let mediaRecorder=null,audioChunks=[],recordingTimer=null,recordingSeconds=0;window.isDictating=false;window.speechFinalText='';
 function escapeHtml(str){if(!str)return'';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 function loadState(){try{const s=localStorage.getItem(APP_KEY);if(s)return{...DEFAULT_STATE,...JSON.parse(s)};}catch(e){}return{...DEFAULT_STATE};}
 function saveState(){try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){showToast('Speicher voll!');}}
@@ -609,91 +609,45 @@ async function startRec(){try{const stream=await navigator.mediaDevices.getUserM
 function stopRec(){if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();clearInterval(recordingTimer);mediaRecorder=null;render();}}
 async function playMemo(mid){const m=state.voiceMemos.find(x=>x.id===mid);if(!m){showToast('Memo nicht gefunden');return;}try{let audioSrc='';if(m.mediaId){const media=await getMedia(m.mediaId);if(media){audioSrc=getCachedUrl(m.mediaId,media.blob);}else{showToast('Audio nicht verfügbar');return;}}else if(m.data){audioSrc=m.data;}else{showToast('Audio nicht verfügbar');return;}const audio=new Audio(audioSrc);audio.play().then(()=>showToast('▶️ Wiedergabe gestartet')).catch(e=>{console.error('Play error:',e);showToast('Wiedergabe nicht möglich');});}catch(e){console.error('Audio error:',e);showToast('Audio nicht verfügbar');}}
 async function delMemo(mid){const m=state.voiceMemos.find(x=>x.id===mid);if(m&&m.mediaId){await deleteMedia(m.mediaId);}setState({voiceMemos:state.voiceMemos.filter(m=>m.id!==mid)});showToast('Gelöscht');}
-async function startSpeech(){
-    // Check for HTTPS requirement on mobile
-    if(location.protocol!=='https:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){
-        return showToast('Sprache zu Text benötigt HTTPS');
+function startSpeech(){
+    if(!window.webkit?.messageHandlers?.diktat){
+        return showToast('Spracherkennung in dieser App-Version nicht verfügbar.');
     }
-    // Check browser support
-    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){
-        return showToast('Sprache zu Text nicht verfügbar in diesem Browser. Bitte Chrome oder Safari verwenden.');
-    }
-    // Request microphone permission first
-    try{
-        await navigator.mediaDevices.getUserMedia({audio:true});
-    }catch(e){
-        console.error('Mic permission error:',e);
-        return showToast('Mikrofon-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.');
-    }
-    try{
-        recognition=new SR();
-        recognition.continuous=true;
-        recognition.interimResults=true;
-        recognition.lang='de-DE';
-        recognition.maxAlternatives=1;
-        window.speechFinalText='';
-        window.speechInterimText='';
-        recognition.onstart=()=>{
-            console.log('Speech recognition started');
-            const el=document.getElementById('liveText');
-            if(el)el.textContent='🎤 Aufnahme aktiv - Sprechen Sie jetzt...';
-        };
-        recognition.onresult=e=>{
-            window.speechInterimText='';
-            for(let i=e.resultIndex;i<e.results.length;i++){
-                if(e.results[i].isFinal){
-                    window.speechFinalText+=e.results[i][0].transcript+' ';
-                }else{
-                    window.speechInterimText+=e.results[i][0].transcript;
-                }
-            }
-            const el=document.getElementById('liveText');
-            if(el){
-                const finalHtml=window.speechFinalText?`<span style="color:var(--text)">${escapeHtml(window.speechFinalText)}</span>`:'';
-                const interimHtml=window.speechInterimText?`<span style="color:var(--muted);font-style:italic">${escapeHtml(window.speechInterimText)}</span>`:'';
-                const combinedHtml=finalHtml+interimHtml;
-                el.innerHTML=combinedHtml||'🎤 Sprechen Sie jetzt...';
-            }
-        };
-        recognition.onend=()=>{
-            console.log('Speech recognition ended');
-            const finalText=window.speechFinalText.trim();
-            if(finalText){
-                showSaveTranscriptModal(finalText);
-            }else{
-                showToast('Kein Text erkannt. Bitte näher ans Mikrofon sprechen.');
-            }
-            recognition=null;
-            render();
-        };
-        recognition.onerror=e=>{
-            console.error('Speech error:',e.error,e.message);
-            let msg='Fehler bei Spracherkennung';
-            if(e.error==='not-allowed')msg='Mikrofon-Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.';
-            else if(e.error==='no-speech')msg='Keine Sprache erkannt. Bitte lauter und deutlicher sprechen.';
-            else if(e.error==='network')msg='Netzwerkfehler. Bitte Internetverbindung prüfen.';
-            else if(e.error==='aborted')msg='Aufnahme abgebrochen';
-            else if(e.error==='audio-capture')msg='Kein Mikrofon gefunden';
-            else if(e.error==='service-not-allowed')msg='Spracherkennung in diesem Browser nicht erlaubt';
-            showToast(msg);
-            recognition=null;
-            render();
-        };
-        recognition.onaudiostart=()=>console.log('Audio capture started');
-        recognition.onsoundstart=()=>console.log('Sound detected');
-        recognition.onspeechstart=()=>console.log('Speech started');
-        recognition.start();
-        render();
-        showToast('🎤 Aufnahme gestartet - Sprechen Sie jetzt!');
-    }catch(e){
-        console.error('Speech init error:',e);
-        showToast('Fehler beim Starten der Spracherkennung. Bitte Browser neu starten.');
-        recognition=null;
-        render();
+    window.speechFinalText='';
+    window.isDictating=true;
+    const el=document.getElementById('liveText');
+    if(el)el.textContent='🎤 Aufnahme aktiv - Sprechen Sie jetzt...';
+    render();
+    window.webkit.messageHandlers.diktat.postMessage({cmd:'start'});
+    showToast('🎙️ Aufnahme gestartet');
+}
+function stopSpeech(){
+    if(window.webkit?.messageHandlers?.diktat){
+        window.webkit.messageHandlers.diktat.postMessage({cmd:'stop'});
     }
 }
-function stopSpeech(){if(recognition){recognition.stop();}}
+window.dStatus=function(active){
+    window.isDictating=active===true;
+    render();
+    if(active===false){
+        const finalText=(window.speechFinalText||'').trim();
+        if(finalText){
+            showSaveTranscriptModal(finalText);
+        }else{
+            showToast('Kein Text erkannt.');
+        }
+    }
+};
+window.dText=function(text){
+    window.speechFinalText=text||'';
+    const el=document.getElementById('liveText');
+    if(el)el.textContent=text||'🎤 Sprechen Sie jetzt...';
+};
+window.dFehler=function(msg){
+    showToast(msg||'Fehler bei Spracherkennung');
+    window.isDictating=false;
+    render();
+};
 function showSaveTranscriptModal(text){showModal('📝 Text speichern',`<div class="form-group"><label class="form-label">Name für den Text</label><input type="text" class="form-input" id="transcriptName" placeholder="z.B. Arztgespräch 15.01."></div><div class="form-group"><label class="form-label">Erkannter Text</label><textarea class="form-textarea" id="transcriptText" rows="5">${text}</textarea></div><button class="btn btn-primary btn-block" onclick="saveTranscriptWithName()">${t('saveBtn')}</button>`);}
 function saveTranscriptWithName(){const name=document.getElementById('transcriptName')?.value||'Transkript';const text=document.getElementById('transcriptText')?.value;if(!text?.trim())return showToast('Kein Text vorhanden');setState({transcripts:[...state.transcripts,{id:id(),name:name,text:text.trim(),date:new Date().toISOString()}]});closeModal();showToast('Text gespeichert ✓');}
 function editTranscript(tid){const t=state.transcripts.find(x=>x.id===tid);if(!t)return;showModal('✏️ Text bearbeiten',`<div class="form-group"><label class="form-label">Name</label><input type="text" class="form-input" id="editTransName" value="${t.name||''}"></div><div class="form-group"><label class="form-label">Text</label><textarea class="form-textarea" id="editTransText" rows="5">${t.text}</textarea></div><button class="btn btn-primary btn-block" onclick="updateTranscript('${tid}')">${t('saveBtn')}</button>`);}
@@ -794,7 +748,7 @@ async function openDocument(did){
     }
     var url=URL.createObjectURL(blobData);window.open(url);
 }
-function renderVoice(){const isRec=mediaRecorder&&mediaRecorder.state==='recording',isListen=recognition!==null;const needsHttps=location.protocol!=='https:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1';const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const speechSupported=!!SR;return`<div class="screen"><div class="section-header"><h1 class="section-title">🎤 Sprache</h1></div>${needsHttps?`<div class="https-warning"><div class="https-warning-icon">🔒</div><div class="https-warning-text"><strong>HTTPS erforderlich</strong><br>Die Sprache-zu-Text-Funktion benötigt eine sichere Verbindung (HTTPS). Die App über HTTPS öffnen oder lokal testen.</div></div>`:''}<div style="margin-bottom:20px;"><h3 style="margin-bottom:10px;color:var(--text)">🎙️ Sprache zu Text</h3><p style="color:var(--muted);font-size:.85rem;margin-bottom:12px;">Arzt-Gespräche direkt in Text umwandeln. Funktioniert am besten in <strong>Chrome</strong> oder <strong>Safari</strong>.</p>${!speechSupported?`<div class="https-warning"><div class="https-warning-icon">⚠️</div><div class="https-warning-text">Ihr Browser unterstützt keine Sprache-zu-Text-Funktion. Bitte verwenden Sie <strong>Google Chrome</strong> oder <strong>Safari</strong>.</div></div>`:`<button class="speech-btn ${isListen?'listening':''}" onclick="${isListen?'stopSpeech()':'startSpeech()'}"><span style="font-size:1.5rem;">${isListen?'⏹️':'🎤'}</span>${isListen?'Aufnahme stoppen & speichern':'Aufnahme starten'}</button>`}${isListen?`<div class="speech-status"><div class="speech-pulse"></div><span style="color:var(--danger);font-weight:600;">Aufnahme aktiv - Sprechen Sie jetzt</span></div><div id="liveText" style="margin-top:14px;padding:16px;background-color:var(--card);border:2px solid var(--primary);border-radius:var(--radius);min-height:100px;color:var(--text);font-size:1rem;line-height:1.6;">🎤 <strong>Aufnahme läuft</strong> - Sprechen Sie jetzt deutlich ins Mikrofon...</div><p style="color:var(--muted);font-size:.8rem;margin-top:10px;text-align:center;">💡 Tipp: Sprechen Sie langsam und deutlich. Tippen Sie auf "Stoppen" um den Text zu speichern.</p>`:''}</div>${state.transcripts.length?`<div style="margin-bottom:20px;"><h4 style="margin:0 0 12px;color:var(--text);display:flex;align-items:center;gap:8px;">📝 Gespeicherte Texte <span style="background:var(--primary);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:10px;">${state.transcripts.length}</span></h4><div class="search-box" style="margin-bottom:12px;"><input type="text" class="form-input" placeholder="🔍 Texte durchsuchen..." value="${state.transcriptSearch||''}" oninput="setState({transcriptSearch:this.value})"></div>${state.transcripts.filter(tr=>!state.transcriptSearch||(tr.name||'').toLowerCase().includes((state.transcriptSearch||'').toLowerCase())||tr.text.toLowerCase().includes((state.transcriptSearch||'').toLowerCase())).slice().reverse().map(t=>`<div class="transcript-item"><div class="transcript-header"><div><div class="transcript-name">${escapeHtml(t.name)||'Transkript'}</div><span class="transcript-date">${formatDT(t.date)}</span></div><div style="display:flex;gap:8px;"><button class="transcript-edit" onclick="editTranscript('${t.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">✏️</button><button class="transcript-delete" onclick="delTranscript('${t.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">🗑️</button></div></div><div class="transcript-text" style="margin-top:8px;padding:12px;background:var(--bg);border-radius:8px;line-height:1.5;">${escapeHtml(t.text)}</div></div>`).join('')}</div>`:''}<div><h3 style="margin-bottom:10px;color:var(--text)">🎤 Sprachmemos</h3><p style="color:var(--muted);font-size:.85rem;margin-bottom:12px;">Audiomemos aufnehmen und abspielen. Aufnahmen werden lokal gespeichert.</p><div class="recording-controls"><button class="record-btn ${isRec?'recording':''}" onclick="${isRec?'stopRec()':'startRec()'}" style="min-width:80px;min-height:80px;">${isRec?'⏹️':'🎤'}</button><div class="recording-status ${isRec?'active':''}">${isRec?'🔴 Aufnahme läuft...':'Tippen zum Aufnehmen'}</div>${isRec?'<div class="recording-timer" id="recTimer">00:00</div>':''}</div>${state.voiceMemos.length?`<h4 style="margin:16px 0 10px;color:var(--text);">🎧 Gespeicherte Memos</h4>${state.voiceMemos.slice().reverse().map(m=>`<div class="memo-item"><button class="play-btn" onclick="playMemo('${m.id}')" style="min-width:48px;min-height:48px;font-size:1.3rem;">▶️</button><div class="memo-info" onclick="renameMemo('${m.id}')" style="cursor:pointer;flex:1;padding:8px;"><div class="memo-title">${escapeHtml(m.title)} <span style="font-size:.7rem;color:var(--muted);">✏️</span></div><div class="memo-meta">${formatDT(m.date)} • ${formatTime(m.duration)}</div></div><button class="memo-delete" onclick="delMemo('${m.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">🗑️</button></div>`).join('')}`:''}</div></div>`;}
+function renderVoice(){const isRec=mediaRecorder&&mediaRecorder.state==='recording',isListen=window.isDictating===true;return`<div class="screen"><div class="section-header"><h1 class="section-title">🎤 Sprache</h1></div><div style="margin-bottom:20px;"><h3 style="margin-bottom:10px;color:var(--text)">🎙️ Sprache zu Text</h3><p style="color:var(--muted);font-size:.85rem;margin-bottom:12px;">Arzt-Gespräche direkt in Text umwandeln.</p><button class="speech-btn ${isListen?'listening':''}" onclick="${isListen?'stopSpeech()':'startSpeech()'}"><span style="font-size:1.5rem;">${isListen?'⏹️':'🎤'}</span>${isListen?'Aufnahme stoppen & speichern':'Aufnahme starten'}</button>${isListen?`<div class="speech-status"><div class="speech-pulse"></div><span style="color:var(--danger);font-weight:600;">Aufnahme aktiv - Sprechen Sie jetzt</span></div><div id="liveText" style="margin-top:14px;padding:16px;background-color:var(--card);border:2px solid var(--primary);border-radius:var(--radius);min-height:100px;color:var(--text);font-size:1rem;line-height:1.6;">🎤 <strong>Aufnahme läuft</strong> - Sprechen Sie jetzt deutlich ins Mikrofon...</div><p style="color:var(--muted);font-size:.8rem;margin-top:10px;text-align:center;">💡 Tipp: Sprechen Sie langsam und deutlich. Tippen Sie auf "Stoppen" um den Text zu speichern.</p>`:''}</div>${state.transcripts.length?`<div style="margin-bottom:20px;"><h4 style="margin:0 0 12px;color:var(--text);display:flex;align-items:center;gap:8px;">📝 Gespeicherte Texte <span style="background:var(--primary);color:#fff;font-size:.7rem;padding:2px 8px;border-radius:10px;">${state.transcripts.length}</span></h4><div class="search-box" style="margin-bottom:12px;"><input type="text" class="form-input" placeholder="🔍 Texte durchsuchen..." value="${state.transcriptSearch||''}" oninput="setState({transcriptSearch:this.value})"></div>${state.transcripts.filter(tr=>!state.transcriptSearch||(tr.name||'').toLowerCase().includes((state.transcriptSearch||'').toLowerCase())||tr.text.toLowerCase().includes((state.transcriptSearch||'').toLowerCase())).slice().reverse().map(t=>`<div class="transcript-item"><div class="transcript-header"><div><div class="transcript-name">${escapeHtml(t.name)||'Transkript'}</div><span class="transcript-date">${formatDT(t.date)}</span></div><div style="display:flex;gap:8px;"><button class="transcript-edit" onclick="editTranscript('${t.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">✏️</button><button class="transcript-delete" onclick="delTranscript('${t.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">🗑️</button></div></div><div class="transcript-text" style="margin-top:8px;padding:12px;background:var(--bg);border-radius:8px;line-height:1.5;">${escapeHtml(t.text)}</div></div>`).join('')}</div>`:''}<div><h3 style="margin-bottom:10px;color:var(--text)">🎤 Sprachmemos</h3><p style="color:var(--muted);font-size:.85rem;margin-bottom:12px;">Audiomemos aufnehmen und abspielen. Aufnahmen werden lokal gespeichert.</p><div class="recording-controls"><button class="record-btn ${isRec?'recording':''}" onclick="${isRec?'stopRec()':'startRec()'}" style="min-width:80px;min-height:80px;">${isRec?'⏹️':'🎤'}</button><div class="recording-status ${isRec?'active':''}">${isRec?'🔴 Aufnahme läuft...':'Tippen zum Aufnehmen'}</div>${isRec?'<div class="recording-timer" id="recTimer">00:00</div>':''}</div>${state.voiceMemos.length?`<h4 style="margin:16px 0 10px;color:var(--text);">🎧 Gespeicherte Memos</h4>${state.voiceMemos.slice().reverse().map(m=>`<div class="memo-item"><button class="play-btn" onclick="playMemo('${m.id}')" style="min-width:48px;min-height:48px;font-size:1.3rem;">▶️</button><div class="memo-info" onclick="renameMemo('${m.id}')" style="cursor:pointer;flex:1;padding:8px;"><div class="memo-title">${escapeHtml(m.title)} <span style="font-size:.7rem;color:var(--muted);">✏️</span></div><div class="memo-meta">${formatDT(m.date)} • ${formatTime(m.duration)}</div></div><button class="memo-delete" onclick="delMemo('${m.id}')" style="min-width:44px;min-height:44px;font-size:1.2rem;">🗑️</button></div>`).join('')}`:''}</div></div>`;}
 function renderPain(){return`<div class="screen"><div class="section-header"><h1 class="section-title">${t('painTitle')}</h1></div><div class="vas-container"><h3 class="vas-title">${t('currentPain')}</h3><p style="color:var(--muted);font-size:.85rem;margin-bottom:12px;">${t('painScale')}</p><div class="vas-scale"><span class="vas-label">${t('noPain')}</span><input type="range" class="vas-slider" id="painSlider" min="0" max="10" value="0" oninput="document.getElementById('painVal').textContent=this.value"><span class="vas-value" id="painVal">0</span></div><div class="vas-emojis"><span>😊</span><span>😐</span><span>😣</span><span>😖</span><span>😫</span></div><button class="btn btn-primary btn-block" style="margin-top:16px;" onclick="savePain(document.getElementById('painSlider').value)">${t('saveBtn')}</button></div><div class="chart-container"><div class="chart-title">${t('courseTitle')}</div><div class="chart-canvas">${painChart()}</div></div>${state.painRecords.length?`<div style="margin-top:16px;"><h4 style="margin-bottom:10px;color:var(--text)">${t('lastEntries')}</h4>${state.painRecords.slice(-5).reverse().map(r=>`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);"><span style="color:var(--text)">${formatDT(r.date)}</span><span style="font-weight:700;color:${r.value<=3?'var(--success)':r.value<=6?'var(--warning)':'var(--danger)'};">${r.value}/10</span></div>`).join('')}</div>`:''}</div>`;}
 function renderVitals(){return`<div class="screen"><div class="section-header"><h1 class="section-title">${t('vitalsTitle')}</h1></div><div class="vas-container"><h3 class="vas-title">${t('newMeasurement')}</h3><div class="vitals-row"><div class="vitals-group"><label>${t('systolicLabel')}</label><input type="number" id="sysIn" placeholder="120"></div><div class="vitals-group"><label>${t('diastolicLabel')}</label><input type="number" id="diaIn" placeholder="80"></div></div><div class="vitals-row"><div class="vitals-group"><label>${t('pulseBpmLabel')}</label><input type="number" id="pulIn" placeholder="70"></div></div><button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="saveVitals()">${t('saveBtn')}</button></div><div class="chart-container"><div class="chart-title">${t('courseTitle')}</div><div class="chart-canvas">${vitalsChart()}</div></div>${state.vitalsRecords.length?`<div style="margin-top:16px;"><h4 style="margin-bottom:10px;color:var(--text)">${t('measurementsTitle')}</h4>${state.vitalsRecords.slice(-5).reverse().map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);"><span style="font-size:.85rem;color:var(--muted);">${formatDT(r.date)}</span><div style="display:flex;gap:12px;"><span style="color:var(--danger);font-weight:600;">${r.systolic}/${r.diastolic}</span><span style="color:var(--success);font-weight:600;">❤️ ${r.pulse}</span></div></div>`).join('')}</div>`:''}</div>`;}
 function renderMedRecords(){return`<div class="screen"><div class="section-header"><h1 class="section-title">${t('medRecordsTitle')}</h1></div><div class="vas-container"><h3 class="vas-title">${t('documentIntake')}</h3><div class="form-group"><label class="form-label">${t('medicationLabel')}</label><input type="text" class="form-input" id="medRecName" placeholder="z.B. Ibuprofen"></div><div class="form-group"><label class="form-label">${t('doseOptional')}</label><input type="text" class="form-input" id="medRecDose" placeholder="z.B. 400mg"></div><button class="btn btn-primary btn-block" onclick="saveMedRec()">${t('documentBtn')}</button></div><div class="chart-container"><div class="chart-title">${t('intakesPerDay')}</div><div class="chart-canvas">${medChart()}</div></div>${state.medicationRecords.length?`<div style="margin-top:16px;"><h4 style="margin-bottom:10px;color:var(--text)">${t('lastTitle')}</h4>${state.medicationRecords.slice(-10).reverse().map(r=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);"><span style="font-size:1.2rem;">💊</span><div style="flex:1;"><div style="font-weight:600;font-size:.9rem;color:var(--text)">${r.name}${r.dose?' ('+r.dose+')':''}</div><div style="font-size:.8rem;color:var(--muted);">${formatDT(r.date)}</div></div></div>`).join('')}</div>`:''}</div>`;}
