@@ -795,9 +795,86 @@ function createNewProfile(){const name=document.getElementById('newProfileName')
 function switchProfile(profileId){const profiles=getProfiles();const currentId=state.profileId||'default';const currentIdx=profiles.findIndex(p=>p.id===currentId);if(currentIdx>=0){profiles[currentIdx].data=JSON.stringify(state);}else{profiles.push({id:currentId,name:state.profile.opType||'Standardprofil',data:JSON.stringify(state)});}const targetProfile=profiles.find(p=>p.id===profileId);if(!targetProfile)return showToast('Profil nicht gefunden');saveProfiles(profiles);const newState=JSON.parse(targetProfile.data);newState.profileId=profileId;state=newState;localStorage.setItem(APP_KEY,JSON.stringify(state));showToast('Profil gewechselt zu: '+targetProfile.name);render();}
 function deleteProfile(profileId){const profiles=getProfiles().filter(p=>p.id!==profileId);saveProfiles(profiles);showToast('Profil gelöscht');render();}
 function exportAllData(){exportFullBackup();}
-function exportFullBackup(){const photosWithoutBlob=state.photos.map(p=>({id:p.id,mediaId:p.mediaId,category:p.category,date:p.date,note:p.note||'',mime:p.mime,size:p.size}));const docsWithoutBlob=state.uploadedDocs.map(d=>({id:d.id,mediaId:d.mediaId,name:d.name,size:d.size,type:d.type,date:d.date}));const memosWithoutBlob=state.voiceMemos.map(m=>({id:m.id,mediaId:m.mediaId,date:m.date,duration:m.duration,title:m.title,mime:m.mime,size:m.size}));const data={version:2,exportDate:new Date().toISOString(),note:'Backup enthält keine Medien (Fotos, Dokumente, Sprachmemos). Diese bleiben lokal auf dem Gerät.',profile:state.profile,photos:photosWithoutBlob,voiceMemos:memosWithoutBlob,uploadedDocs:docsWithoutBlob,transcripts:state.transcripts,painRecords:state.painRecords,vitalsRecords:state.vitalsRecords,medicationRecords:state.medicationRecords,appointments:state.appointments,medications:state.medications,questions:state.questions,tasks:state.tasks,documents:state.documents,customDocuments:state.customDocuments,woundNotes:state.woundNotes||[],chatMessages:state.chatMessages||[]};const blob=new Blob([JSON.stringify(data)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`operationsbegleiter-backup-${new Date().toISOString().split('T')[0]}.json`;a.style.display='none';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);showToast('Backup erstellt (ohne Medien) 📤');}
+function blobToBase64(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});}
+async function exportFullBackup(){
+showToast('Backup wird erstellt...');
+try{
+const photosWithMedia=[];
+for(const p of state.photos){
+let data=null;
+if(p.mediaId){try{const media=await getMedia(p.mediaId);if(media&&media.blob){data=await blobToBase64(media.blob);}}catch(e){console.error('Photo export error:',e);}}
+photosWithMedia.push({id:p.id,category:p.category,date:p.date,note:p.note||'',mime:p.mime||'image/jpeg',data:data});
+}
+const docsWithMedia=[];
+for(const d of state.uploadedDocs){
+let data=null;
+if(d.mediaId){try{const media=await getMedia(d.mediaId);if(media&&media.blob){data=await blobToBase64(media.blob);}}catch(e){console.error('Doc export error:',e);}}
+docsWithMedia.push({id:d.id,name:d.name,type:d.type,date:d.date,data:data});
+}
+const memosWithMedia=[];
+for(const m of state.voiceMemos){
+let data=null;
+if(m.mediaId){try{const media=await getMedia(m.mediaId);if(media&&media.blob){data=await blobToBase64(media.blob);}}catch(e){console.error('Memo export error:',e);}}
+memosWithMedia.push({id:m.id,date:m.date,duration:m.duration,title:m.title,mime:m.mime||'audio/webm',data:data});
+}
+const backupData={version:3,exportDate:new Date().toISOString(),includesMedia:true,profile:state.profile,photos:photosWithMedia,voiceMemos:memosWithMedia,uploadedDocs:docsWithMedia,transcripts:state.transcripts,painRecords:state.painRecords,vitalsRecords:state.vitalsRecords,medicationRecords:state.medicationRecords,appointments:state.appointments,medications:state.medications,questions:state.questions,tasks:state.tasks,documents:state.documents,customDocuments:state.customDocuments,woundNotes:state.woundNotes||[],chatMessages:state.chatMessages||[]};
+const jsonStr=JSON.stringify(backupData);
+const blob=new Blob([jsonStr],{type:'application/json'});
+const url=URL.createObjectURL(blob);
+const a=document.createElement('a');
+a.href=url;
+a.download=`operationsbegleiter-vollbackup-${new Date().toISOString().split('T')[0]}.json`;
+a.style.display='none';
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+const sizeMB=(jsonStr.length/1024/1024).toFixed(1);
+showToast(`Vollständiges Backup erstellt (${sizeMB} MB) 📤`);
+}catch(err){console.error('Backup error:',err);showToast('Backup-Fehler: '+err.message);}
+}
 function importDataModal(){showModal('📥 Daten importieren',`<p style="color:var(--muted);margin-bottom:16px;line-height:1.5;">Wählen Sie eine Backup-Datei (.json), um Ihre Daten wiederherzustellen. <strong>Achtung:</strong> Vorhandene Daten werden überschrieben!</p><div class="upload-area" onclick="document.getElementById('importFile').click()"><div class="upload-icon">📂</div><div class="upload-text">Backup-Datei auswählen</div></div><input type="file" id="importFile" class="file-input" accept=".json" onchange="handleImport(event)">`);}
-function handleImport(e){const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{try{const data=JSON.parse(ev.target.result);if(!data.profile&&!data.version){showToast('Ungültige Backup-Datei');return;}if(data.version===2){showToast('Backup importiert (ohne Medien)');}const newState={...state,...data,setupComplete:true,currentScreen:'dashboard'};delete newState.version;delete newState.exportDate;delete newState.note;localStorage.setItem(APP_KEY,JSON.stringify(newState));state=newState;closeModal();showToast('Daten erfolgreich importiert! 🎉');render();}catch(err){showToast('Fehler beim Import: '+err.message);}};r.readAsText(file);}
+async function handleImport(e){
+const file=e.target.files[0];if(!file)return;
+showToast('Backup wird geladen...');
+const r=new FileReader();
+r.onload=async ev=>{
+try{
+const data=JSON.parse(ev.target.result);
+if(!data.profile&&!data.version){showToast('Ungültige Backup-Datei');return;}
+if(data.version===3&&data.includesMedia){
+showToast('Medien werden importiert...');
+await clearAllMedia();
+const newPhotos=[];
+for(const p of data.photos||[]){
+if(p.data){
+try{const blob=dataURLToBlob(p.data);if(blob){const mediaId=await putMedia({blob,mime:p.mime||'image/jpeg'});newPhotos.push({id:p.id,mediaId:mediaId,category:p.category,date:p.date,note:p.note||'',mime:p.mime||'image/jpeg',size:blob.size});}else{newPhotos.push({id:p.id,category:p.category,date:p.date,note:p.note||'',mime:p.mime});}}catch(err){console.error('Photo import error:',err);newPhotos.push({id:p.id,category:p.category,date:p.date,note:p.note||''});}}else{newPhotos.push({id:p.id,category:p.category,date:p.date,note:p.note||''});}
+}
+data.photos=newPhotos;
+const newDocs=[];
+for(const d of data.uploadedDocs||[]){
+if(d.data){
+try{const blob=dataURLToBlob(d.data);if(blob){const mediaId=await putMedia({blob,mime:d.type});newDocs.push({id:d.id,mediaId:mediaId,name:d.name,type:d.type,date:d.date,size:blob.size});}else{newDocs.push({id:d.id,name:d.name,type:d.type,date:d.date});}}catch(err){console.error('Doc import error:',err);newDocs.push({id:d.id,name:d.name,type:d.type,date:d.date});}}else{newDocs.push({id:d.id,name:d.name,type:d.type,date:d.date});}
+}
+data.uploadedDocs=newDocs;
+const newMemos=[];
+for(const m of data.voiceMemos||[]){
+if(m.data){
+try{const blob=dataURLToBlob(m.data);if(blob){const mediaId=await putMedia({blob,mime:m.mime||'audio/webm'});newMemos.push({id:m.id,mediaId:mediaId,date:m.date,duration:m.duration,title:m.title,mime:m.mime||'audio/webm',size:blob.size});}else{newMemos.push({id:m.id,date:m.date,duration:m.duration,title:m.title});}}catch(err){console.error('Memo import error:',err);newMemos.push({id:m.id,date:m.date,duration:m.duration,title:m.title});}}else{newMemos.push({id:m.id,date:m.date,duration:m.duration,title:m.title});}
+}
+data.voiceMemos=newMemos;
+}
+const newState={...state,...data,setupComplete:true,currentScreen:'dashboard',migrations:{mediaToIndexedDB:true}};
+delete newState.version;delete newState.exportDate;delete newState.note;delete newState.includesMedia;
+localStorage.setItem(APP_KEY,JSON.stringify(newState));
+state=newState;
+closeModal();
+showToast('Backup vollständig importiert! 🎉');
+render();
+}catch(err){console.error('Import error:',err);showToast('Fehler beim Import: '+err.message);}
+};
+r.readAsText(file);
+}
 function renderImpressum(){return`<div class="screen"><div class="section-header"><h1 class="section-title">${t('impressumTitle')}</h1></div><div class="info-content" style="margin-bottom:16px;"><h3 style="margin-bottom:12px;color:var(--text);">${t('aboutAppTitle')}</h3><p style="color:var(--muted);line-height:1.6;margin-bottom:12px;">${t('aboutAppDesc')}</p><h3 style="margin:20px 0 12px;color:var(--text);">${t('medicalNoteTitle')}</h3><p style="color:var(--muted);line-height:1.6;margin-bottom:12px;">${t('medicalNoteContent')}</p><h3 style="margin:20px 0 12px;color:var(--text);">${t('privacyTitleLong')}</h3><p style="color:var(--muted);line-height:1.6;margin-bottom:12px;">${t('privacyContentLong')}</p><h3 style="margin:20px 0 12px;color:var(--text);">${t('contactTitleLong')}</h3><p style="color:var(--muted);line-height:1.6;">${t('contactContentLong')}</p></div><div class="storage-info"><span>💡</span><p>${t('versionInfo')}</p></div></div>`;}
 function attachListeners(){document.querySelectorAll('#disclaimer,#privacy').forEach(el=>{el?.addEventListener('change',e=>{const p={...state.profile};if(e.target.id==='disclaimer')p.disclaimerAccepted=e.target.checked;if(e.target.id==='privacy')p.privacyAccepted=e.target.checked;setState({profile:p});});});document.querySelectorAll('.tab').forEach(t=>{t.addEventListener('click',e=>{const tab=e.target.dataset.tab;document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));e.target.classList.add('active');document.querySelectorAll('.info-section').forEach(s=>s.classList.add('hidden'));document.querySelector(`[data-content="${tab}"]`)?.classList.remove('hidden');});});document.querySelectorAll('.filter-tab').forEach(t=>{t.addEventListener('click',e=>{const f=e.target.dataset.filter;document.querySelectorAll('.filter-tab').forEach(x=>x.classList.remove('active'));e.target.classList.add('active');document.querySelectorAll('.task').forEach(task=>{const done=task.classList.contains('completed');if(f==='all')task.style.display='';else if(f==='open')task.style.display=done?'none':'';else task.style.display=done?'':'none';});});});const chatMsgs=document.getElementById('chatMessages');if(chatMsgs)chatMsgs.scrollTop=chatMsgs.scrollHeight;}
 document.addEventListener('DOMContentLoaded',async()=>{if(state.largeFont)document.documentElement.style.fontSize='18px';try{await openDB();await migrateMediaToIndexedDB();}catch(e){console.error('IndexedDB init error:',e);}if(state.setupComplete&&state.tasks.length>0){const currentIds=state.tasks.map(t=>t.id);let newTasks=false;getTimeline().forEach(p=>{p.tasks.forEach(t=>{if(!currentIds.includes(t.id)){state.tasks.push({...t,day:p.day,completed:false,note:''});newTasks=true;}});});if(newTasks)saveState();}render();});
