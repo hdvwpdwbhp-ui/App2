@@ -561,7 +561,9 @@ function getWarnings(){return [{title:'Starke Blutung',desc:'Blut durchnässt Ve
 function getOpInfo(){return {ablauf:['Sie kommen nüchtern in die Klinik','Aufnahme durch das Pflegeteam','Gespräch mit dem Anästhesisten','Die OP wird durchgeführt','Aufwachraum zur Überwachung','Verlegung oder Entlassung'],vorbereitung:['Nüchtern erscheinen (nach Anweisung)','Medikamente nur nach Absprache','Kein Alkohol 24h vor OP','Nicht rauchen (mind. 24h)','Alle Unterlagen mitbringen','Begleitperson organisieren'],nachsorge:['Wundpflege nach Anweisung','Schmerzmittel wie verordnet','Körperliche Schonung','Kontrolltermine einhalten','Bei Warnzeichen melden','Krankschreibung einreichen'],fragen:[{q:'Wann darf ich duschen?',a:'Nach 24-48h mit wasserfestem Pflaster.'},{q:'Wann darf ich Auto fahren?',a:'Frühestens 24h nach Narkose, ohne Schmerzmittel.'},{q:'Wann kann ich arbeiten?',a:'Abhängig von OP und Beruf – mit Arzt besprechen.'},{q:'Wie lange muss ich nüchtern sein?',a:'Mindestens 6-8 Stunden vor der OP nichts essen, 2 Stunden nichts trinken (klare Flüssigkeiten).'},{q:'Welche Medikamente muss ich vorher absetzen?',a:'Blutverdünner wie Aspirin/Marcumar oft 5-7 Tage vorher – immer mit Arzt absprechen.'},{q:'Was passiert wenn mir nach der Narkose übel ist?',a:'Übelkeit nach Narkose ist häufig. Medikamente dagegen sind verfügbar. Langsam trinken beginnen.'},{q:'Wie lange dauert die Aufwachphase?',a:'30-60 Minuten im Aufwachraum, vollständige Erholung kann mehrere Stunden dauern.'},{q:'Wann werden die Fäden gezogen?',a:'Je nach OP und Nahtmaterial nach 7-14 Tagen, oft beim Hausarzt.'},{q:'Darf ich nach der OP Sport machen?',a:'Leichte Aktivität meist nach 1-2 Wochen, Sport je nach OP erst nach 4-12 Wochen.'},{q:'Was soll ich bei Fieber tun?',a:'Bei Fieber über 38.5°C nach OP sofort Klinik kontaktieren – kann auf Infektion hinweisen.'},{q:'Wie lange werde ich Schmerzen haben?',a:'Akute Schmerzen 3-7 Tage, danach abklingend. Schmerzmittel nach Anweisung nehmen.'},{q:'Kann ich nach der OP normal essen?',a:'Erst klare Flüssigkeiten, dann leichte Kost. Bei Bauch-OPs spezielle Ernährung beachten.'}]};}
 const AI_RESPONSES={greeting:'Hallo! Ich bin Ihr medizinischer Assistent. Ich kann Ihnen allgemeine Informationen zu Ihrer OP-Vorbereitung geben. Wie kann ich helfen?',narkose:'Bei einer Narkose werden Sie in einen schlafähnlichen Zustand versetzt. Der Anästhesist überwacht dabei Ihre Vitalfunktionen. Wichtig: Halten Sie sich an die Nüchternheitsregeln!',schmerzen:'Nach einer OP sind leichte bis mittlere Schmerzen normal. Nehmen Sie die verordneten Schmerzmittel regelmäßig ein. Bei starken, zunehmenden Schmerzen kontaktieren Sie Ihre Klinik.',wunde:'Halten Sie die Wunde sauber und trocken. Verbandswechsel nur nach Anweisung. Bei Rötung, Schwellung oder Eiter sofort zum Arzt!',essen:'Vor der OP: 6-8 Stunden nichts essen, 2 Stunden nichts trinken. Nach der OP: Beginnen Sie mit leichter Kost, wenn Sie sich bereit fühlen.',medikamente:'Besprechen Sie alle Medikamente mit Ihrem Anästhesisten. Blutverdünner müssen oft pausiert werden. Nehmen Sie Dauermedikation nur nach Absprache.',angst:'Angst vor einer OP ist völlig normal. Sprechen Sie mit Ihrem Behandlungsteam darüber. Entspannungstechniken und gute Vorbereitung können helfen.',default:'Das ist eine gute Frage! Für spezifische medizinische Beratung wenden Sie sich bitte an Ihr Behandlungsteam. Ich kann Ihnen allgemeine Informationen zur OP-Vorbereitung geben.'};
 let state=loadState();
-let mediaRecorder=null,audioChunks=[],recordingTimer=null,recordingSeconds=0;window.isDictating=false;window.speechFinalText='';
+let mediaRecorder=null,audioChunks=[],recordingTimer=null,recordingSeconds=0;
+window.isDictating=false;
+window.speechFinalText='';
 function escapeHtml(str){if(!str)return'';return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');}
 function loadState(){try{const s=localStorage.getItem(APP_KEY);if(s)return{...DEFAULT_STATE,...JSON.parse(s)};}catch(e){}return{...DEFAULT_STATE};}
 function saveState(){try{localStorage.setItem(APP_KEY,JSON.stringify(state));}catch(e){showToast('Speicher voll!');}}
@@ -611,7 +613,7 @@ async function playMemo(mid){const m=state.voiceMemos.find(x=>x.id===mid);if(!m)
 async function delMemo(mid){const m=state.voiceMemos.find(x=>x.id===mid);if(m&&m.mediaId){await deleteMedia(m.mediaId);}setState({voiceMemos:state.voiceMemos.filter(m=>m.id!==mid)});showToast('Gelöscht');}
 function startSpeech(){
     if(!window.webkit?.messageHandlers?.diktat){
-        return showToast('Spracherkennung in dieser App-Version nicht verfügbar.');
+        return showToast('Spracherkennung nur in der iOS-App verfügbar.');
     }
     window.speechFinalText='';
     window.isDictating=true;
@@ -619,7 +621,7 @@ function startSpeech(){
     if(el)el.textContent='🎤 Aufnahme aktiv - Sprechen Sie jetzt...';
     render();
     window.webkit.messageHandlers.diktat.postMessage({cmd:'start'});
-    showToast('🎙️ Aufnahme gestartet');
+    showToast('🎤 Aufnahme gestartet');
 }
 function stopSpeech(){
     if(window.webkit?.messageHandlers?.diktat){
